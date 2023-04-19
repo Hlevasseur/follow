@@ -1,11 +1,16 @@
 import folium
 import json
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler, JobQueue
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+import gpxpy
+import gpxpy.gpx
+import time
 
 locations = []
+default_map_location = [49.443232, 1.099971]
+default_chat_id = -938670097
 
 def save_locations(locations):
     # Ajouter la date et l'heure actuelles à chaque coordonnée comme commentaire
@@ -35,13 +40,19 @@ def load_locations():
     except FileNotFoundError:
         return []
 
-def refreshmap():
+def refreshmap(): 
     # Recharger les données du fichier JSON
     sorted_locations = sorted(load_locations(), key=lambda x: x['date'])
 
-    # Mise à jour de la carte
-    last_location = sorted_locations[-1]
-    m = folium.Map(location=[last_location['lat'], last_location['lon']], zoom_start=11)        
+    # Mise à jour de la carte centrer sur la dernière localisation et avec le gpx chargé
+    if not sorted_locations:
+        center_location = None
+    else :
+        last_location = sorted_locations[-1]
+        center_location = [last_location['lat'], last_location['lon']]
+    
+    m = load_gpx_to_map(center_location=center_location)
+          
     for loc in sorted_locations:
         popup = f"<div style='width:200px'><small>le {loc['date']}</small><br/><br/>{loc['comment']}</div>"
         if loc['comment'] != '':
@@ -53,9 +64,30 @@ def refreshmap():
         folium.PolyLine(locations=[[loc['lat'], loc['lon']] for loc in sorted_locations], color='green').add_to(m)
     m.save('map.html')
 
+def load_gpx_to_map(center_location):
+    # Charger le fichier GPX
+    with open('gr210.gpx', 'r') as gpx_file:
+        gpx = gpxpy.parse(gpx_file)
+
+    # Si center_location est vide, on définit par défaut
+    if center_location is None:
+        center_location=default_map_location
+
+    # Créer une carte centrée sur les coordonnées du premier point
+    first_point = gpx.tracks[0].segments[0].points[0]
+    m = folium.Map(location=center_location, zoom_start=11)
+
+    # Ajouter les points GPX sur la carte
+    for track in gpx.tracks:
+        for segment in track.segments:
+            points = [[point.latitude, point.longitude] for point in segment.points]
+            folium.PolyLine(locations=points, color="green").add_to(m)
+
+    return m
+
 def handle_location(update: Update, context: CallbackContext):
     message = update.message
-    chat_id = message.chat_id
+    chat_id = default_chat_id
     user = message.from_user
 
     if message.location is not None:
@@ -83,7 +115,7 @@ def handle_location(update: Update, context: CallbackContext):
         print(f"Utilisateur {user.username} ({user.id}) a envoyé les coordonnées GPS : {coords}")
 
 def handle_refreshmap(update, context):
-    chat_id = update.message.chat_id
+    chat_id = default_chat_id
 
     # Mise à jour de la carte
     refreshmap()
@@ -96,7 +128,7 @@ def handle_refreshmap(update, context):
 
 def edit_comment(update, context):
     message = update.message
-    chat_id = message.chat_id
+    chat_id = default_chat_id
     user = message.from_user
 
     # Charger les localisations précédentes
@@ -120,7 +152,7 @@ def edit_comment(update, context):
 
 def handle_edit_location(update, context):
     query = update.callback_query
-    chat_id = query.message.chat_id
+    chat_id = default_chat_id
 
     # Vérifier que la liste des localisations n'est pas vide
     locations = load_locations()
@@ -137,7 +169,7 @@ def handle_edit_location(update, context):
 
 def handle_text(update, context):
     message = update.message
-    chat_id = message.chat_id
+    chat_id = default_chat_id
     user = message.from_user
 
     # Vérifier si l'utilisateur est en train de modifier un commentaire
@@ -176,13 +208,23 @@ def handle_text(update, context):
         # Envoyer le message combiné à l'utilisateur
         context.bot.send_message(chat_id=chat_id, text=combined_message)
 
+def handle_message(update, context: CallbackContext):
+    chat_id = "-914001647"
+
+    if update.message and update.message.chat_id == int(chat_id):
+        print(f"New message: {update.message.text}")
 def main():
+    # Charger la map au démarrage
+    refreshmap()
+        
     # Connexion au bot Telegram
-    updater = Updater('6064029835:AAF7qvRP-fLmYvDaXUBB_tKcGHgJ2cEv8Io')
+    updater = Updater('5950442484:AAFYRIdzU18QKOBMVEinaukl81gb8JrxUZ4')
 
     # Gestionnaire de commandes
     dispatcher = updater.dispatcher
     
+    chat_id = default_chat_id
+
     location_handler = MessageHandler(Filters.location, handle_location)
     dispatcher.add_handler(location_handler)
     
@@ -195,9 +237,11 @@ def main():
     
     dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), handle_text))
 
+    message_handler = MessageHandler(Filters.text, handle_message)
+    dispatcher.add_handler(message_handler)
+
     # Démarrage du bot
     updater.start_polling()
-
     updater.idle()
 
 if __name__ == '__main__':
