@@ -1,12 +1,13 @@
 import folium
 import json
 from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler, JobQueue
+from telegram.ext import Application, Updater, CommandHandler, MessageHandler, filters, CallbackContext, CallbackQueryHandler, JobQueue
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 import gpxpy
 import gpxpy.gpx
 import time
+from queue import Queue
 
 locations = []
 default_map_location = [49.443232, 1.099971]
@@ -213,36 +214,32 @@ def handle_message(update, context: CallbackContext):
 
     if update.message and update.message.chat_id == int(chat_id):
         print(f"New message: {update.message.text}")
+
 def main():
     # Charger la map au démarrage
     refreshmap()
-        
-    # Connexion au bot Telegram
-    updater = Updater('5950442484:AAFYRIdzU18QKOBMVEinaukl81gb8JrxUZ4')
 
-    # Gestionnaire de commandes
-    dispatcher = updater.dispatcher
+    application = Application.builder().token("5950442484:AAFYRIdzU18QKOBMVEinaukl81gb8JrxUZ4").build()
     
     chat_id = default_chat_id
 
-    location_handler = MessageHandler(Filters.location, handle_location)
-    dispatcher.add_handler(location_handler)
+    location_handler = MessageHandler(filters.LOCATION, handle_location)
+    application.add_handler(location_handler)
     
     refreshmap_handler = CommandHandler('refreshmap', handle_refreshmap)
-    dispatcher.add_handler(refreshmap_handler)
+    application.add_handler(refreshmap_handler)
     
     editcomment_handler = CommandHandler('editcomment', edit_comment)
-    dispatcher.add_handler(editcomment_handler)
-    dispatcher.add_handler(CallbackQueryHandler(handle_edit_location))
+    application.add_handler(editcomment_handler)
+    application.add_handler(CallbackQueryHandler(handle_edit_location))
     
-    dispatcher.add_handler(MessageHandler(Filters.text & (~Filters.command), handle_text))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
 
-    message_handler = MessageHandler(Filters.text, handle_message)
-    dispatcher.add_handler(message_handler)
+    message_handler = MessageHandler(filters.TEXT, handle_message)
+    application.add_handler(message_handler)
 
     # Démarrage du bot
-    updater.start_polling()
-    updater.idle()
+    application.run_polling()
 
 if __name__ == '__main__':
     main()
