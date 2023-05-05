@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import Flask, request
+from flask import Flask, request, send_from_directory, render_template
 import shutil
 import os
 from markupsafe import escape
@@ -177,6 +177,11 @@ def index(user_id):
             return load_locations_history_from_file()
     else:
         return 'bad request', 400
+    
+@app.route('/map')
+def showMap():
+    # return render_template("map.html")
+    return send_from_directory(directory="./",path="map.html")
 
 #
 #Initialisation du serveur
